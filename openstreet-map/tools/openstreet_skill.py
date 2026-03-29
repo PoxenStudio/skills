@@ -23,7 +23,7 @@ from urllib.parse import urlsplit
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
-DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.de/search"
+DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 DEFAULT_TILE_URL_TEMPLATE = "https://tile.openstreetmap.de/{z}/{x}/{y}.png"
 USER_AGENT = "openclaw-openstreet-skill/1.0"
 DEFAULT_TIMEOUT = 20
@@ -411,7 +411,7 @@ def build_parser() -> argparse.ArgumentParser:
     points_input = render.add_mutually_exclusive_group(required=True)
     points_input.add_argument("--points-file", help="JSON array file for places")
     points_input.add_argument("--points-base64", help="Base64 encoded JSON array for places")
-    render.add_argument("--output", default=None, help="Output image path (optional if --base64 is set)")
+    render.add_argument("--output", default=None, help="Output image path (PNG)")
     render.add_argument("--base64", action="store_true", help="Include base64-encoded PNG in JSON output")
     render.add_argument("--width", type=int, default=1200, help="Map width")
     render.add_argument("--height", type=int, default=800, help="Map height")

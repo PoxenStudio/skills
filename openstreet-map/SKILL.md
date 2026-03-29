@@ -73,7 +73,7 @@ python tools/openstreet_skill.py render \
   --output output/annotated_map.png
 ```
 
-Render command returning base64-encoded image (no file written):
+Optional: render command returning base64-encoded image (no file written):
 
 ```bash
 python tools/openstreet_skill.py render \
@@ -81,7 +81,7 @@ python tools/openstreet_skill.py render \
   --base64
 ```
 
-Render command writing file **and** returning base64:
+Optional: render command writing file **and** returning base64:
 
 ```bash
 python tools/openstreet_skill.py render \
@@ -93,17 +93,17 @@ python tools/openstreet_skill.py render \
 `render` input/output options:
 
 - `--points-file` / `--points-base64`: points source (mutually exclusive, one required).
-- `--output`: save image to path (optional when `--base64` is set).
-- `--base64`: include base64-encoded PNG in JSON stdout under `image_base64`.
+- `--output`: save image to path. This is the default and recommended output mode.
+- `--base64`: include base64-encoded PNG in JSON stdout under `image_base64`. Use only when the caller cannot access output files directly.
 - At least one of `--output` or `--base64` must be provided.
 
-> **Recommended**: Use `--points-base64` for input and `--base64` for output together.
-> The entire call requires no file I/O, avoiding leftover temporary files in directories the caller cannot control.
+> **Recommended**: Default to file output with `--output`.
+> Do not use `--base64` unless file delivery is impossible, because base64 image payloads consume a large number of tokens.
 >
 > ```bash
 > python tools/openstreet_skill.py render \
->   --points-base64 "..." \
->   --base64
+>   --points-file examples/points.json \
+>   --output output/annotated_map.png
 > ```
 
 Behavior:
@@ -123,18 +123,18 @@ JSON output structure:
   "places": [
     { "index": 1, "name": "Point A", "lat": 31.2304, "lon": 121.4737 }
   ],
-  "output": "output/annotated_map.png",
-  "image_base64": "iVBORw0KGgo..."
+  "output": "output/annotated_map.png"
 }
 ```
 
 - `output`: present only when `--output` is provided.
-- `image_base64`: present only when `--base64` is set. PNG image encoded as standard base64.
+- `image_base64`: present only when `--base64` is set. PNG image encoded as standard base64. Avoid this in normal flows because it significantly increases token usage.
 
 ## Notes for OpenClaw integration
 
 - Expose these two CLI actions as callable tools in OpenClaw:
   - `locate`: maps to `python tools/openstreet_skill.py locate ...`
   - `render`: maps to `python tools/openstreet_skill.py render ...`
+- For `render`, default to `--output` file delivery instead of `--base64` to keep responses small.
 - Return JSON stdout to the caller and treat non-zero exit code as failure.
 - Respect OSM usage policy by not sending high-frequency requests.
