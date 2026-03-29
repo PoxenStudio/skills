@@ -105,8 +105,6 @@ def _resolve_service_endpoints() -> tuple[str, str]:
 
 
 NOMINATIM_URL, TILE_URL_TEMPLATE = _resolve_service_endpoints()
-print(f"Using Nominatim URL: {NOMINATIM_URL}", file=sys.stderr)
-print(f"Using Tile URL Template: {TILE_URL_TEMPLATE}", file=sys.stderr)
 
 
 @dataclass
