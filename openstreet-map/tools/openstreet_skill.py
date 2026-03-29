@@ -24,10 +24,13 @@ import requests
 from PIL import Image, ImageDraw, ImageFont
 
 DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-DEFAULT_TILE_URL_TEMPLATE = "https://tile.openstreetmap.de/{z}/{x}/{y}.png"
+DEFAULT_TILE_URL_TEMPLATE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 USER_AGENT = "openclaw-openstreet-skill/1.0"
 DEFAULT_TIMEOUT = 20
 DEFAULT_TILE_SIZE = 256
+DEFAULT_VIEW_PADDING_RATIO = 0.01
+MARKER_RADIUS_PX = 11
+MIN_EDGE_PADDING_PX = 10
 
 # ----- Font configuration -----
 BUNDLED_FONT_DIR = Path(__file__).parent / "fonts"
@@ -155,15 +158,20 @@ def choose_zoom(
     tile_size: int,
     max_zoom: int = 19,
     min_zoom: int = 1,
-    padding_ratio: float = 0.2,
+    padding_ratio: float = DEFAULT_VIEW_PADDING_RATIO,
+    marker_radius_px: int = MARKER_RADIUS_PX,
+    min_edge_padding_px: int = MIN_EDGE_PADDING_PX,
 ) -> int:
     """Pick the highest zoom that fits all points inside target viewport."""
     pts = list(points)
     if not pts:
         raise ValueError("points must not be empty")
 
-    avail_w = max(1.0, width * (1.0 - padding_ratio * 2.0))
-    avail_h = max(1.0, height * (1.0 - padding_ratio * 2.0))
+    # Keep a small but explicit edge margin so marker circles remain fully visible.
+    pad_x = max(width * padding_ratio, float(min_edge_padding_px + marker_radius_px))
+    pad_y = max(height * padding_ratio, float(min_edge_padding_px + marker_radius_px))
+    avail_w = max(1.0, width - pad_x * 2.0)
+    avail_h = max(1.0, height - pad_y * 2.0)
 
     for zoom in range(max_zoom, min_zoom - 1, -1):
         coords = [latlon_to_world_px(p.lat, p.lon, zoom, tile_size) for p in pts]
@@ -247,7 +255,7 @@ def draw_markers(map_img: Image.Image, point_pixels: list[tuple[float, float]]) 
     font = _load_cjk_font(12)
 
     for idx, (x, y) in enumerate(point_pixels, start=1):
-        r = 11
+        r = MARKER_RADIUS_PX
         cx = int(round(x))
         cy = int(round(y))
 
@@ -291,7 +299,7 @@ def build_legend(places: list[Place], width: int, cols: int = 3) -> Image.Image:
 def render_annotated_map(
     places: list[Place],
     output_path: Path | None,
-    width: int = 1200,
+    width: int = 1600,
     height: int = 800,
     tile_size: int = DEFAULT_TILE_SIZE,
     return_base64: bool = False,
@@ -299,7 +307,15 @@ def render_annotated_map(
     if not places:
         raise ValueError("No places to render")
 
-    zoom = choose_zoom(places, width, height, tile_size)
+    zoom = choose_zoom(
+        places,
+        width,
+        height,
+        tile_size,
+        padding_ratio=DEFAULT_VIEW_PADDING_RATIO,
+        marker_radius_px=MARKER_RADIUS_PX,
+        min_edge_padding_px=MIN_EDGE_PADDING_PX,
+    )
     map_img, point_pixels = build_base_map(places, width, height, tile_size, zoom)
     annotated = draw_markers(map_img, point_pixels)
     legend = build_legend(places, width)
@@ -413,7 +429,7 @@ def build_parser() -> argparse.ArgumentParser:
     points_input.add_argument("--points-base64", help="Base64 encoded JSON array for places")
     render.add_argument("--output", default=None, help="Output image path (PNG)")
     render.add_argument("--base64", action="store_true", help="Include base64-encoded PNG in JSON output")
-    render.add_argument("--width", type=int, default=1200, help="Map width")
+    render.add_argument("--width", type=int, default=1600, help="Map width")
     render.add_argument("--height", type=int, default=800, help="Map height")
     render.set_defaults(func=cmd_render)
 

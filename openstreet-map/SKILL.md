@@ -61,7 +61,7 @@ Render command:
 python tools/openstreet_skill.py render \
   --points-file examples/points.json \
   --output output/annotated_map.png \
-  --width 1200 \
+  --width 1600 \
   --height 800
 ```
 
