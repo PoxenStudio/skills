@@ -18,13 +18,17 @@ This skill provides two capabilities:
 
 Optional environment variable:
 
-- `OPENSTRET_HOST`: Override OpenStreet service host (for private/self-host proxy).
-- `OPENSTREET_HOST`: Compatibility alias; lower priority than `OPENSTRET_HOST`.
+- `OPENSTREET_MAP_HOST`: Override only the `openstreetmap.org` host suffix in the default endpoints. Recommended form: `openstreetmap.org`. If `http://` or `https://` is provided, only the host part is used.
 
 When set, the skill uses:
 
-- Geocode endpoint: `${OPENSTRET_HOST}/search`
-- Tile endpoint: `${OPENSTRET_HOST}/{z}/{x}/{y}.png`
+- Geocode endpoint: `https://nominatim.${OPENSTREET_MAP_HOST}/search`
+- Tile endpoint: `https://tile.${OPENSTREET_MAP_HOST}/{z}/{x}/{y}.png`
+
+Examples:
+
+- `OPENSTREET_MAP_HOST=openstreetmap.org` -> `https://nominatim.openstreetmap.org/search`
+- `OPENSTREET_MAP_HOST=https://openstreetmap.org` -> `https://tile.openstreetmap.org/{z}/{x}/{y}.png`
 
 ## Install
 
@@ -69,18 +73,63 @@ python tools/openstreet_skill.py render \
   --output output/annotated_map.png
 ```
 
-`render` now supports either:
+Render command returning base64-encoded image (no file written):
 
-- `--points-file` for file input.
-- `--points-base64` for direct base64 JSON string input.
+```bash
+python tools/openstreet_skill.py render \
+  --points-base64 "..." \
+  --base64
+```
+
+Render command writing file **and** returning base64:
+
+```bash
+python tools/openstreet_skill.py render \
+  --points-base64 "..." \
+  --output output/annotated_map.png \
+  --base64
+```
+
+`render` input/output options:
+
+- `--points-file` / `--points-base64`: points source (mutually exclusive, one required).
+- `--output`: save image to path (optional when `--base64` is set).
+- `--base64`: include base64-encoded PNG in JSON stdout under `image_base64`.
+- At least one of `--output` or `--base64` must be provided.
+
+> **Recommended**: Use `--points-base64` for input and `--base64` for output together.
+> The entire call requires no file I/O, avoiding leftover temporary files in directories the caller cannot control.
+>
+> ```bash
+> python tools/openstreet_skill.py render \
+>   --points-base64 "..." \
+>   --base64
+> ```
 
 Behavior:
 
 - Selects a suitable zoom level to fit all points.
 - Downloads OSM tiles and stitches them into one map image.
 - Draws numbered markers on each place.
-- Appends a legend under the map with `index -> place name (lat, lon)`.
-- Saves final image to the specified output path.
+- Appends a three-column legend under the map showing index and place name.
+- Saves final image to `--output` path if specified.
+
+JSON output structure:
+
+```json
+{
+  "zoom": 14,
+  "size": { "width": 1200, "height": 880 },
+  "places": [
+    { "index": 1, "name": "Point A", "lat": 31.2304, "lon": 121.4737 }
+  ],
+  "output": "output/annotated_map.png",
+  "image_base64": "iVBORw0KGgo..."
+}
+```
+
+- `output`: present only when `--output` is provided.
+- `image_base64`: present only when `--base64` is set. PNG image encoded as standard base64.
 
 ## Notes for OpenClaw integration
 

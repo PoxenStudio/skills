@@ -18,12 +18,13 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import urlsplit
 
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
-DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-DEFAULT_TILE_URL_TEMPLATE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.de/search"
+DEFAULT_TILE_URL_TEMPLATE = "https://tile.openstreetmap.de/{z}/{x}/{y}.png"
 USER_AGENT = "openclaw-openstreet-skill/1.0"
 DEFAULT_TIMEOUT = 20
 DEFAULT_TILE_SIZE = 256
@@ -82,18 +83,30 @@ def _load_cjk_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
 
 def _resolve_service_endpoints() -> tuple[str, str]:
     """Resolve endpoints from environment variable override."""
-    host = os.getenv("OPENSTRET_HOST") or os.getenv("OPENSTREET_HOST")
+    host = os.getenv("OPENSTREET_MAP_HOST")
     if not host:
         return DEFAULT_NOMINATIM_URL, DEFAULT_TILE_URL_TEMPLATE
 
-    normalized = host.rstrip("/")
+    normalized = host.strip()
+    parsed = urlsplit(
+        normalized if "://" in normalized else f"https://{normalized}"
+    )
+    replacement_host = parsed.netloc or parsed.path
+    replacement_host = replacement_host.strip("/")
+    if not replacement_host:
+        return DEFAULT_NOMINATIM_URL, DEFAULT_TILE_URL_TEMPLATE
+
     return (
-        f"{normalized}/search",
-        f"{normalized}/{{z}}/{{x}}/{{y}}.png",
+        DEFAULT_NOMINATIM_URL.replace("openstreetmap.de", replacement_host),
+        DEFAULT_TILE_URL_TEMPLATE.replace(
+            "openstreetmap.de", replacement_host
+        ),
     )
 
 
 NOMINATIM_URL, TILE_URL_TEMPLATE = _resolve_service_endpoints()
+print(f"Using Nominatim URL: {NOMINATIM_URL}", file=sys.stderr)
+print(f"Using Tile URL Template: {TILE_URL_TEMPLATE}", file=sys.stderr)
 
 
 @dataclass
@@ -279,10 +292,11 @@ def build_legend(places: list[Place], width: int, cols: int = 3) -> Image.Image:
 
 def render_annotated_map(
     places: list[Place],
-    output_path: Path,
+    output_path: Path | None,
     width: int = 1200,
     height: int = 800,
     tile_size: int = DEFAULT_TILE_SIZE,
+    return_base64: bool = False,
 ) -> dict[str, Any]:
     if not places:
         raise ValueError("No places to render")
@@ -296,11 +310,7 @@ def render_annotated_map(
     final_img.paste(annotated, (0, 0))
     final_img.paste(legend, (0, height))
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    final_img.save(output_path)
-
-    return {
-        "output": str(output_path),
+    result: dict[str, Any] = {
         "zoom": zoom,
         "size": {"width": width, "height": height + legend.height},
         "places": [
@@ -308,6 +318,18 @@ def render_annotated_map(
             for i, p in enumerate(places)
         ],
     }
+
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        final_img.save(output_path)
+        result["output"] = str(output_path)
+
+    if return_base64:
+        buf = BytesIO()
+        final_img.save(buf, format="PNG")
+        result["image_base64"] = base64.b64encode(buf.getvalue()).decode("ascii")
+
+    return result
 
 
 def normalize_places(raw: list[dict[str, Any]]) -> list[Place]:
@@ -362,12 +384,17 @@ def cmd_render(args: argparse.Namespace) -> int:
     if not isinstance(data, list):
         raise ValueError("Input points must be a JSON array")
 
+    output_path = Path(args.output) if args.output else None
+    if output_path is None and not args.base64:
+        raise ValueError("At least one of --output or --base64 is required")
+
     places = normalize_places(data)
     result = render_annotated_map(
         places=places,
-        output_path=Path(args.output),
+        output_path=output_path,
         width=args.width,
         height=args.height,
+        return_base64=args.base64,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
@@ -386,7 +413,8 @@ def build_parser() -> argparse.ArgumentParser:
     points_input = render.add_mutually_exclusive_group(required=True)
     points_input.add_argument("--points-file", help="JSON array file for places")
     points_input.add_argument("--points-base64", help="Base64 encoded JSON array for places")
-    render.add_argument("--output", required=True, help="Output image path")
+    render.add_argument("--output", default=None, help="Output image path (optional if --base64 is set)")
+    render.add_argument("--base64", action="store_true", help="Include base64-encoded PNG in JSON output")
     render.add_argument("--width", type=int, default=1200, help="Map width")
     render.add_argument("--height", type=int, default=800, help="Map height")
     render.set_defaults(func=cmd_render)
